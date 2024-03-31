@@ -114,7 +114,7 @@ int main() {
     // Main loop to accept connections
     while (1) {
         fd_set read_fds;
-        FD_ZERO(&read_fds);
+        FD_ZERO(&read_fds); // Clear the file descriptor set
         FD_SET(tcp_server_socket, &read_fds);
         FD_SET(udp_server_socket, &read_fds);
 
@@ -125,6 +125,7 @@ int main() {
             continue; // Continue listening for connections
         }
 
+        // Handle TCP connections
         if (FD_ISSET(tcp_server_socket, &read_fds)) {
             int tcp_client_socket;
             struct sockaddr_in tcp_client_addr;
@@ -138,6 +139,7 @@ int main() {
             handle_tcp_connection(tcp_client_socket, motd);
         }
 
+        // Handle UDP connections
         if (FD_ISSET(udp_server_socket, &read_fds)) {
             handle_udp_connection(udp_server_socket, motd);
         }
