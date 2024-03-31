@@ -108,6 +108,8 @@ int main() {
 
         if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
             perror("Select error");
+            close(tcp_server_socket);
+            close(udp_server_socket);
             exit(EXIT_FAILURE);
         }
 
