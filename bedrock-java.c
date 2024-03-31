@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <errno.h>
 
 #define CONFIG_FILE "config.conf"
 #define TCP_PORT 25565 // Minecraft default TCP port
@@ -20,6 +21,10 @@ void handle_tcp_connection(int client_socket, const char *motd) {
         send(client_socket, buffer, bytes_received, 0);
     }
 
+    if (bytes_received == -1) {
+        perror("TCP receive error");
+    }
+
     close(client_socket);
 }
 
@@ -34,6 +39,10 @@ void handle_udp_connection(int server_socket, const char *motd) {
 
     // Send MOTD to client
     sendto(server_socket, motd, strlen(motd), 0, (struct sockaddr *)&client_addr, addr_len);
+
+    if (bytes_received == -1) {
+        perror("UDP receive error");
+    }
 
     close(server_socket);
 }
@@ -68,11 +77,13 @@ int main() {
 
     if (bind(tcp_server_socket, (struct sockaddr *)&tcp_server_addr, sizeof(tcp_server_addr)) == -1) {
         perror("TCP bind error");
+        close(tcp_server_socket);
         exit(EXIT_FAILURE);
     }
 
     if (listen(tcp_server_socket, 5) == -1) {
         perror("TCP listen error");
+        close(tcp_server_socket);
         exit(EXIT_FAILURE);
     }
 
@@ -83,6 +94,7 @@ int main() {
     struct sockaddr_in udp_server_addr;
     if ((udp_server_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
         perror("UDP socket creation error");
+        close(tcp_server_socket);
         exit(EXIT_FAILURE);
     }
 
@@ -92,6 +104,8 @@ int main() {
 
     if (bind(udp_server_socket, (struct sockaddr *)&udp_server_addr, sizeof(udp_server_addr)) == -1) {
         perror("UDP bind error");
+        close(tcp_server_socket);
+        close(udp_server_socket);
         exit(EXIT_FAILURE);
     }
 
