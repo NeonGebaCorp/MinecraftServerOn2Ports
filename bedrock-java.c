@@ -5,93 +5,132 @@
 #include <arpa/inet.h>
 
 #define CONFIG_FILE "config.conf"
-#define TCP_SERVER_PORT 25565
-#define UDP_SERVER_PORT 19132
+#define TCP_PORT 25565 // Minecraft default TCP port
+#define UDP_PORT 19132 // Minecraft default UDP port
 
-void tcp_connect(const char *tcp_server_ip, const char *motd) {
-    int tcp_sock;
-    struct sockaddr_in tcp_server_addr;
+void handle_tcp_connection(int client_socket, const char *motd) {
+    char buffer[1024];
+    ssize_t bytes_received;
 
-    // Create TCP socket
-    if ((tcp_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("TCP socket creation error");
-        exit(EXIT_FAILURE);
+    // Send MOTD to client
+    send(client_socket, motd, strlen(motd), 0);
+
+    // Receive data from client and echo it back
+    while ((bytes_received = recv(client_socket, buffer, sizeof(buffer), 0)) > 0) {
+        send(client_socket, buffer, bytes_received, 0);
     }
 
-    // Set TCP server address parameters
-    tcp_server_addr.sin_family = AF_INET;
-    tcp_server_addr.sin_port = htons(TCP_SERVER_PORT);
-    
-    // Convert IPv4 address from text to binary form
-    if (inet_pton(AF_INET, tcp_server_ip, &tcp_server_addr.sin_addr) <= 0) {
-        perror("Invalid TCP address/ Address not supported");
-        exit(EXIT_FAILURE);
-    }
-
-    // Connect to TCP server
-    if (connect(tcp_sock, (struct sockaddr *)&tcp_server_addr, sizeof(tcp_server_addr)) < 0) {
-        perror("TCP connection failed");
-        exit(EXIT_FAILURE);
-    }
-    
-    printf("Connected to TCP server.\n");
-
-    // Example: Send a TCP handshake packet
-    char tcp_handshake_packet[1024];
-    sprintf(tcp_handshake_packet, "\x00\x00%s", motd); // TCP handshake packet content with motd
-    send(tcp_sock, tcp_handshake_packet, strlen(tcp_handshake_packet), 0);
-    
-    // Further TCP communication can be implemented here
-    close(tcp_sock);
+    close(client_socket);
 }
 
-void udp_connect(const char *udp_server_ip, const char *motd) {
-    int udp_sock;
-    struct sockaddr_in udp_server_addr;
+void handle_udp_connection(int server_socket, const char *motd) {
+    char buffer[1024];
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+    ssize_t bytes_received;
 
-    // Create UDP socket
-    if ((udp_sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        perror("UDP socket creation error");
-        exit(EXIT_FAILURE);
-    }
+    // Receive data from client
+    bytes_received = recvfrom(server_socket, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &addr_len);
 
-    // Set UDP server address parameters
-    udp_server_addr.sin_family = AF_INET;
-    udp_server_addr.sin_port = htons(UDP_SERVER_PORT);
-    
-    // Convert IPv4 address from text to binary form
-    if (inet_pton(AF_INET, udp_server_ip, &udp_server_addr.sin_addr) <= 0) {
-        perror("Invalid UDP address/ Address not supported");
-        exit(EXIT_FAILURE);
-    }
+    // Send MOTD to client
+    sendto(server_socket, motd, strlen(motd), 0, (struct sockaddr *)&client_addr, addr_len);
 
-    // Example: Send a UDP ping packet
-    char udp_ping_packet[1024];
-    sprintf(udp_ping_packet, "\x00\x00%s", motd); // UDP ping packet content with motd
-    sendto(udp_sock, udp_ping_packet, strlen(udp_ping_packet), 0, (const struct sockaddr *)&udp_server_addr, sizeof(udp_server_addr));
-    
-    printf("Sent UDP ping packet.\n");
-
-    // Further UDP communication can be implemented here
-    close(udp_sock);
+    close(server_socket);
 }
 
 int main() {
+    // Read server configuration from config.conf
     FILE *config_file = fopen(CONFIG_FILE, "r");
     if (config_file == NULL) {
         perror("Error opening config file");
         exit(EXIT_FAILURE);
     }
 
-    char tcp_server_ip[100], udp_server_ip[100], motd[256];
+    char tcp_server_ip[100], udp_server_ip[100], motd[1024];
     while (fscanf(config_file, "%*[^=]=%99s", tcp_server_ip) != EOF) {
         fscanf(config_file, "%*[^=]=%99s", udp_server_ip);
-        fscanf(config_file, "%*[^=]=%255[^\n]", motd);
+        fscanf(config_file, "%*[^=]=%1023[^\n]", motd);
     }
 
     fclose(config_file);
 
-    tcp_connect(tcp_server_ip, motd);
-    udp_connect(udp_server_ip, motd);
+    // TCP server setup
+    int tcp_server_socket;
+    struct sockaddr_in tcp_server_addr;
+    if ((tcp_server_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("TCP socket creation error");
+        exit(EXIT_FAILURE);
+    }
+
+    tcp_server_addr.sin_family = AF_INET;
+    tcp_server_addr.sin_addr.s_addr = INADDR_ANY;
+    tcp_server_addr.sin_port = htons(TCP_PORT);
+
+    if (bind(tcp_server_socket, (struct sockaddr *)&tcp_server_addr, sizeof(tcp_server_addr)) == -1) {
+        perror("TCP bind error");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(tcp_server_socket, 5) == -1) {
+        perror("TCP listen error");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("TCP server listening on port %d...\n", TCP_PORT);
+
+    // UDP server setup
+    int udp_server_socket;
+    struct sockaddr_in udp_server_addr;
+    if ((udp_server_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+        perror("UDP socket creation error");
+        exit(EXIT_FAILURE);
+    }
+
+    udp_server_addr.sin_family = AF_INET;
+    udp_server_addr.sin_addr.s_addr = INADDR_ANY;
+    udp_server_addr.sin_port = htons(UDP_PORT);
+
+    if (bind(udp_server_socket, (struct sockaddr *)&udp_server_addr, sizeof(udp_server_addr)) == -1) {
+        perror("UDP bind error");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("UDP server listening on port %d...\n", UDP_PORT);
+
+    // Main loop to accept connections
+    while (1) {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(tcp_server_socket, &read_fds);
+        FD_SET(udp_server_socket, &read_fds);
+
+        int max_fd = (tcp_server_socket > udp_server_socket) ? tcp_server_socket : udp_server_socket;
+
+        if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
+            perror("Select error");
+            exit(EXIT_FAILURE);
+        }
+
+        if (FD_ISSET(tcp_server_socket, &read_fds)) {
+            int tcp_client_socket;
+            struct sockaddr_in tcp_client_addr;
+            socklen_t tcp_client_len = sizeof(tcp_client_addr);
+            if ((tcp_client_socket = accept(tcp_server_socket, (struct sockaddr *)&tcp_client_addr, &tcp_client_len)) == -1) {
+                perror("TCP accept error");
+                continue;
+            }
+
+            printf("TCP client connected: %s\n", inet_ntoa(tcp_client_addr.sin_addr));
+            handle_tcp_connection(tcp_client_socket, motd);
+        }
+
+        if (FD_ISSET(udp_server_socket, &read_fds)) {
+            handle_udp_connection(udp_server_socket, motd);
+        }
+    }
+
+    close(tcp_server_socket);
+    close(udp_server_socket);
+
     return 0;
 }
