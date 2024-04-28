@@ -37,14 +37,15 @@ void handle_udp_connection(int server_socket, const char *motd) {
     // Receive data from client
     bytes_received = recvfrom(server_socket, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &addr_len);
 
-    // Send MOTD to client
-    sendto(server_socket, motd, strlen(motd), 0, (struct sockaddr *)&client_addr, addr_len);
-
     if (bytes_received == -1) {
         perror("UDP receive error");
+        return;
     }
 
-    close(server_socket);
+    // Send MOTD to client
+    if (sendto(server_socket, motd, strlen(motd), 0, (struct sockaddr *)&client_addr, addr_len) == -1) {
+        perror("UDP sendto error");
+    }
 }
 
 int main() {
@@ -56,9 +57,10 @@ int main() {
     }
 
     char tcp_server_ip[100], udp_server_ip[100], motd[1024];
-    while (fscanf(config_file, "%*[^=]=%99s", tcp_server_ip) != EOF) {
-        fscanf(config_file, "%*[^=]=%99s", udp_server_ip);
-        fscanf(config_file, "%*[^=]=%1023[^\n]", motd);
+
+    while (fscanf(config_file, "tcp_server_ip=%99s", tcp_server_ip) != EOF) {
+        fscanf(config_file, "udp_server_ip=%99s", udp_server_ip);
+        fscanf(config_file, "motd=%1023[^\n]", motd);
     }
 
     fclose(config_file);
@@ -72,7 +74,7 @@ int main() {
     }
 
     tcp_server_addr.sin_family = AF_INET;
-    tcp_server_addr.sin_addr.s_addr = INADDR_ANY;
+    tcp_server_addr.sin_addr.s_addr = inet_addr(tcp_server_ip);
     tcp_server_addr.sin_port = htons(TCP_PORT);
 
     if (bind(tcp_server_socket, (struct sockaddr *)&tcp_server_addr, sizeof(tcp_server_addr)) == -1) {
@@ -99,7 +101,7 @@ int main() {
     }
 
     udp_server_addr.sin_family = AF_INET;
-    udp_server_addr.sin_addr.s_addr = INADDR_ANY;
+    udp_server_addr.sin_addr.s_addr = inet_addr(udp_server_ip);
     udp_server_addr.sin_port = htons(UDP_PORT);
 
     if (bind(udp_server_socket, (struct sockaddr *)&udp_server_addr, sizeof(udp_server_addr)) == -1) {
